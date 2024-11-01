@@ -1,11 +1,12 @@
 package com.stream.app.controller;
 
 
+import com.stream.app.AppConstants;
 import com.stream.app.entity.Video;
 import com.stream.app.payload.CustomMessage;
 import com.stream.app.service.VideoService;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.FileSystemResource;
-import org.springframework.core.io.InputStreamResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -134,18 +135,25 @@ public class VideoController
 
                 rangeStart = Long.parseLong(ranges[0]);
 
-                if (ranges.length > 1)
-                    {
-                        rangeEnd = Long.parseLong(ranges[1]);
+                rangeEnd = rangeStart + AppConstants.CHUNK_SIZE - 1;
 
-                    } else
+                if (rangeEnd >= fileLength)
                     {
                         rangeEnd = fileLength - 1;
                     }
-                if (rangeEnd > fileLength - 1)
-                    {
-                        rangeEnd = fileLength - 1;
-                    }
+
+                //                if (ranges.length > 1)
+                //                    {
+                //                        rangeEnd = Long.parseLong(ranges[1]);
+                //
+                //                    } else
+                //                    {
+                //                        rangeEnd = fileLength - 1;
+                //                    }
+                //                if (rangeEnd > fileLength - 1)
+                //                    {
+                //                        rangeEnd = fileLength - 1;
+                //                    }
 
                 System.out.println(rangeStart);
                 System.out.println(rangeEnd);
@@ -156,24 +164,31 @@ public class VideoController
                     {
                         inputStream = Files.newInputStream(path);
                         inputStream.skip(rangeStart);
+                        long contentLength = rangeEnd - rangeStart + 1;
+
+                        byte[] data = new byte[(int) contentLength];
+                        int read = inputStream.read(data, 0, data.length);
+                        System.out.println("read(number of bytes) : " + read);
+
+
+                        HttpHeaders httpHeaders = new HttpHeaders();
+                        httpHeaders.add("Content-Range", "bytes " + rangeStart + "-" + rangeEnd + "/" + fileLength);
+                        httpHeaders.add("Cache-Control", "no-cache, no-store, must-revalidate");
+                        httpHeaders.add("Pragma", "no-cache");
+                        httpHeaders.add("Expires", "0");
+                        httpHeaders.add("X-Content-Type-Options", "nosniff");
+                        httpHeaders.setContentLength(contentLength);
+
+                        return ResponseEntity.status(HttpStatus.PARTIAL_CONTENT)
+                                             .headers(httpHeaders)
+                                             .contentType(MediaType.parseMediaType(contentType))
+                                             .body(new ByteArrayResource(data));
                     } catch (IOException ex)
                     {
                         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                                              .build();
                     }
 
-                long contentLength = rangeEnd - rangeStart + 1;
-                HttpHeaders httpHeaders = new HttpHeaders();
-                httpHeaders.add("Content-Range", "bytes " + rangeStart + "-" + rangeEnd + "/" + fileLength);
-                httpHeaders.add("Cache-Control", "no-cache, no-store, must-revalidate");
-                httpHeaders.add("Pragma", "no-cache");
-                httpHeaders.add("Expires", "0");
-                httpHeaders.add("X-Content-Type-Options", "nosniff");
-                httpHeaders.setContentLength(contentLength);
 
-                return ResponseEntity.status(HttpStatus.PARTIAL_CONTENT)
-                                     .headers(httpHeaders)
-                                     .contentType(MediaType.parseMediaType(contentType))
-                                     .body(new InputStreamResource(inputStream));
             }
     }
